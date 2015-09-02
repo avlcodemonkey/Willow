@@ -1,4 +1,4 @@
-﻿/*
+/*
  License: http://www.apache.org/licenses/LICENSE-2.0 
  Home page: http://code.google.com/p/dapper-dot-net/
  Note: to build on C# 3.0 + .NET 3.5, include the CSHARP30 compiler symbol (and yes,
@@ -183,7 +183,13 @@ namespace Dapper
                 cmd.Transaction = transaction;
             cmd.CommandText = commandText;
             if (commandTimeout.HasValue)
+            {
                 cmd.CommandTimeout = commandTimeout.Value;
+            }
+            else if (SqlMapper.Settings.CommandTimeout.HasValue)
+            {
+                cmd.CommandTimeout = SqlMapper.Settings.CommandTimeout.Value;
+            }
             if (commandType.HasValue)
                 cmd.CommandType = commandType.Value;
             if (paramReader != null)
@@ -252,6 +258,30 @@ namespace Dapper
     /// </summary>
     static partial class SqlMapper
     {
+        /// <summary>
+        /// Permits specifying certain SqlMapper values globally.
+        /// </summary>
+        public static class Settings
+        {
+            static Settings()
+            {
+                SetDefaults();
+            }
+
+            /// <summary>
+            /// Resets all Settings to their default values
+            /// </summary>
+            public static void SetDefaults()
+            {
+                CommandTimeout = null;
+            }
+
+            /// <summary>
+            /// Specifies the default Command Timeout for all Queries
+            /// </summary>
+            public static int? CommandTimeout { get; set; }
+        }
+
         /// <summary>
         /// Implement this interface to pass an arbitrary db specific set of parameters to Dapper
         /// </summary>
@@ -910,15 +940,15 @@ namespace Dapper
             {
                 return DbType.Binary;
             }
+            if (typeHandlers.TryGetValue(type, out handler))
+            {
+                return DbType.Object;
+            }
             if (typeof(IEnumerable).IsAssignableFrom(type))
             {
                 return DynamicParameters.EnumerableMultiParameter;
             }
 
-            if (typeHandlers.TryGetValue(type, out handler))
-            {
-                return DbType.Object;
-            }
 #if !DNXCORE50
             switch (type.FullName)
             {
@@ -2120,6 +2150,10 @@ this IDbConnection cnn, string sql, Func<TFirst, TSecond, TThird, TFourth, TRetu
             CacheInfo info;
             if (!TryGetQueryCache(identity, out info))
             {
+                if (GetMultiExec(exampleParameters) != null)
+                {
+                    throw new InvalidOperationException("An enumerable sequence of parameters (arrays, lists, etc) is not allowed in this context");
+                }
                 info = new CacheInfo();
                 if (identity.parametersType != null)
                 {
